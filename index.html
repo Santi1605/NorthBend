@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NORTH BEND</title>
+<style>
+  :root{
+    --bg:#0a0d14; --amber:#ffb23d; --text:#e8e4d8; --muted:#96a0b2;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; }
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:"Courier New",monospace; overflow:hidden;
+  }
+  /* --- PANTALLA DE INICIO --- */
+  #inicio{
+    position:fixed; inset:0; z-index:10;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    text-align:center; padding:24px;
+    background:radial-gradient(ellipse at center, #10141d 0%, #06080d 100%);
+    transition:opacity .6s ease;
+  }
+  #inicio h1{
+    font-size:clamp(44px,13vw,130px); letter-spacing:10px; color:var(--amber);
+    text-shadow:0 4px 40px rgba(0,0,0,0.9); line-height:1;
+  }
+  #inicio .desc{
+    color:var(--muted); letter-spacing:2px; margin-top:22px; max-width:520px;
+    font-size:clamp(13px,2.4vw,17px); line-height:1.7;
+  }
+  #inicio .start{
+    margin-top:40px; background:transparent; border:1px solid var(--amber);
+    color:var(--amber); padding:14px 34px; border-radius:10px;
+    font-family:inherit; font-size:16px; letter-spacing:3px; cursor:pointer;
+    transition:background .2s, transform .1s;
+  }
+  #inicio .start:hover{ background:rgba(255,178,61,0.12); }
+  #inicio .start:active{ transform:translateY(1px); }
+  /* --- ESCENA 3D --- */
+  #c3d{ position:fixed; inset:0; z-index:1; }
+  #c3d canvas{ display:block; }
+  .oculto{ opacity:0; pointer-events:none; }
+</style>
+</head>
+<body>
+
+  <div id="inicio">
+    <h1>NORTH BEND</h1>
+    <p class="desc">Un juego detectivesco. Recorre la escena, examina lo que otros pasaron por alto y reconstruye lo que de verdad ocurrió.</p>
+    <button class="start" id="btnStart">INICIAR</button>
+  </div>
+
+  <div id="c3d"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(function(){
+  var host=document.getElementById('c3d');
+  var W=window.innerWidth, H=window.innerHeight;
+
+  // --- Escena ---
+  var scene=new THREE.Scene();
+  scene.background=new THREE.Color(0x0d1117);
+  scene.fog=new THREE.FogExp2(0x0d1117, 0.035);
+
+  // --- Cámara isométrica (ortográfica) ---
+  var d=8, aspect=W/H;
+  var camera=new THREE.OrthographicCamera(-d*aspect,d*aspect,d,-d,0.1,100);
+  camera.position.set(12,12,12);
+  camera.lookAt(0,0,0);
+
+  // --- Render ---
+  var renderer=new THREE.WebGLRenderer({antialias:true});
+  renderer.setSize(W,H);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  host.appendChild(renderer.domElement);
+
+  // --- Luz suave (para que el suelo no sea plano muerto) ---
+  scene.add(new THREE.AmbientLight(0x557088, 0.9));
+  var dir=new THREE.DirectionalLight(0xbfd4e0, 0.5);
+  dir.position.set(-8,14,-6);
+  scene.add(dir);
+
+  // --- Suelo isométrico vacío: una placa + rejilla ---
+  var floor=new THREE.Mesh(
+    new THREE.PlaneGeometry(20,20),
+    new THREE.MeshStandardMaterial({color:0x141a24, roughness:1})
+  );
+  floor.rotation.x=-Math.PI/2;
+  scene.add(floor);
+
+  var grid=new THREE.GridHelper(20,20, 0x2a3a48, 0x1c2733);
+  grid.position.y=0.01;
+  scene.add(grid);
+
+  // --- Loop de animación (rota suave para que se sienta 3D) ---
+  var t=0;
+  function animate(){
+    requestAnimationFrame(animate);
+    t+=0.0015;
+    // órbita muy leve de la cámara alrededor del centro
+    var r=17;
+    camera.position.x=Math.cos(t)*r;
+    camera.position.z=Math.sin(t)*r;
+    camera.position.y=13;
+    camera.lookAt(0,0,0);
+    renderer.render(scene,camera);
+  }
+  animate();
+
+  // --- Responsive ---
+  window.addEventListener('resize',function(){
+    W=window.innerWidth; H=window.innerHeight;
+    aspect=W/H;
+    camera.left=-d*aspect; camera.right=d*aspect; camera.top=d; camera.bottom=-d;
+    camera.updateProjectionMatrix();
+    renderer.setSize(W,H);
+  });
+
+  // --- Botón de inicio: oculta la portada y muestra la escena ---
+  document.getElementById('btnStart').addEventListener('click',function(){
+    var ini=document.getElementById('inicio');
+    ini.classList.add('oculto');
+    setTimeout(function(){ ini.style.display='none'; }, 650);
+  });
+})();
+</script>
+</body>
+</html>
