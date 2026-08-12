@@ -4,7 +4,7 @@ Juego detectivesco en 3D hecho con Three.js. Un detective recorre la escena de u
 
 🎮 Jugar ahora
 
-→ northbend.netlify.app
+👉 https://northbend.netlify.app
 
 El sitio se actualiza automáticamente con cada cambio subido a este repositorio.
 
