@@ -331,11 +331,18 @@ var lampLight=null;
 
 /* ---------- COLISIONES ---------- */
 var PLAYER_R=0.34, obstacles=[];
+// zona acordonada: elipse caminable (dentro de la cinta). Fuera de aquí no se puede.
+var CORD={ cx:2.0, cz:-1.0, rx:12.5, rz:9.0 };
+var SCENE_OBS=[{x:-6.5,z:-3.2,r:2.4}];  // carro estrellado (coords visuales)
 function pushOut(p){
-  var n=nearRoad(p.x,p.z), limit=ROAD_HALF+1.5-PLAYER_R;
-  if(n.dist>limit){ var over=n.dist-limit,dx=(p.x-n.p.x)/n.dist,dz=(p.z-n.p.z)/n.dist; p.x-=dx*over; p.z-=dz*over; }
-  for(var i=0;i<obstacles.length;i++){ var o=obstacles[i],dx=p.x-o.x,dz=p.z-o.z,dd=Math.hypot(dx,dz),min=o.r+PLAYER_R;
-    if(dd<min&&dd>0.0001){ p.x=o.x+dx/dd*min; p.z=o.z+dz/dd*min; } }
+  // mantener dentro de la elipse de la cinta
+  var dx=(p.x-CORD.cx)/CORD.rx, dz=(p.z-CORD.cz)/CORD.rz;
+  var e=dx*dx+dz*dz;
+  if(e>1){ var s=Math.sqrt(e); p.x=CORD.cx+(p.x-CORD.cx)/s; p.z=CORD.cz+(p.z-CORD.cz)/s; }
+  // obstáculos sólidos (carro estrellado visible en el arte)
+  var OBS=(typeof SCENE_OBS!=='undefined')?SCENE_OBS:obstacles;
+  for(var i=0;i<OBS.length;i++){ var o=OBS[i],ox=p.x-o.x,oz=p.z-o.z,dd=Math.hypot(ox,oz),min=o.r+PLAYER_R;
+    if(dd<min&&dd>0.0001){ p.x=o.x+ox/dd*min; p.z=o.z+oz/dd*min; } }
 }
 
 /* ---------- CARGA DE MODELOS ---------- */
@@ -411,7 +418,7 @@ var polBlue=new THREE.PointLight(0x2d7bff,0,30,1.7); polBlue.position.set(polPos
 
 /* ---------- PERSONAJE (Soldier que camina) ---------- */
 var player=new THREE.Group();
-var sp=onRoad(0.42,-0.5,0); player.position.set(sp.x,0,sp.z); scene.add(player);
+player.position.set(2.0,0,-1.0); scene.add(player);   // centro de la zona acordonada
 var mixer=null, actions={}, curAction=null, modelReady=false, FACE=Math.PI;
 function fallbackHero(){ var c=new THREE.Mesh(new THREE.CylinderGeometry(0.26,0.34,1.15,10),
     new THREE.MeshStandardMaterial({color:0x1e3d6b,roughness:0.85})); c.position.y=0.58; c.scale.set(2.4,2.4,2.4); c.castShadow=true; player.add(c);
@@ -438,6 +445,7 @@ var ring=new THREE.Mesh(new THREE.RingGeometry(0.24,0.34,22),
   new THREE.MeshBasicMaterial({color:0xffd23f,transparent:true,opacity:0.8,side:THREE.DoubleSide}));
 ring.rotation.x=-Math.PI/2; ring.position.y=0.03; ring.visible=false; scene.add(ring);
 var started=false;
+var zoomTarget=0, zoomCur=0;   // 0 = vista normal, 1 = zoom sobre pista
 renderer.domElement.addEventListener('pointerdown',function(e){
   if(!started) return; var r=renderer.domElement.getBoundingClientRect();
   mouse.x=((e.clientX-r.left)/r.width)*2-1; mouse.y=-((e.clientY-r.top)/r.height)*2+1;
@@ -447,28 +455,36 @@ renderer.domElement.addEventListener('pointerdown',function(e){
 });
 
 /* ---------- SISTEMA DE PISTAS (marcadores 2D sobre el fondo) ---------- */
-// left/top en % de pantalla, ubicados sobre los objetos del render de fondo
+// sx/sy = posición 2D del marcador en pantalla (%). wx/wz = adónde camina el detective en el mundo 3D.
 var CLUES=[
-  { id:0, sx:38, sy:70, tag:'EVIDENCIA 02', title:'El vehículo estrellado',
+  { id:0, sx:40, sy:64, wx:-6.0, wz:-3.0, tag:'EVIDENCIA 02', title:'El vehículo estrellado',
     text:'El auto autónomo de Elena Richardson golpeó el cedro con una precisión poco natural. El impacto fue demasiado directo, demasiado controlado. No hay marcas de derrape ni de un volantazo. Un choque accidental no se ve así: esto parece una trayectoria asignada.' },
-  { id:1, sx:87, sy:86, tag:'EVIDENCIA 01', title:'Oficial de policía',
+  { id:1, sx:74, sy:74, wx:9.0, wz:1.5, tag:'EVIDENCIA 01', title:'Oficial de policía',
     text:'Un solo agente en la escena. Su transcripción en vivo repite lo que ya decidió el sistema: «el resumen de despacho llegó limpio, VESTA lo marcó como baja complejidad». Nadie más viene en camino. Para una víctima mortal en una vía monitoreada por IA, la respuesta es extrañamente lenta.' },
-  { id:2, sx:52, sy:34, tag:'EVIDENCIA 03', title:'La cinta policial',
+  { id:2, sx:54, sy:44, wx:2.0, wz:-5.5, tag:'EVIDENCIA 03', title:'La cinta policial',
     text:'La cinta amarilla apenas sostiene la escena. Está acordonada, pero casi no ha sido examinada: no se ha levantado evidencia ni retirado el cuerpo. Todo indica que el caso fue etiquetado como «limpio» antes de que nadie lo investigara de verdad.' }
 ];
 var cluesFound={}, cluesTotal=CLUES.length;
-// crear los marcadores como botones HTML sobre la escena
+var pendingClue=null;   // pista a la que el detective se dirige
 var clueLayer=document.getElementById('clueLayer');
 CLUES.forEach(function(c){
   var b=document.createElement('button');
   b.className='clueDot'; b.style.left=c.sx+'%'; b.style.top=c.sy+'%';
-  b.setAttribute('data-id',c.id);
   b.innerHTML='<span class="ring"></span><span class="core"></span>';
-  b.addEventListener('click',function(ev){ ev.stopPropagation(); examineClue(c.id); });
+  b.addEventListener('click',function(ev){ ev.stopPropagation(); goToClue(c.id); });
   clueLayer.appendChild(b); c.el=b;
 });
 
-function examineClue(id){
+// paso 1: caminar hacia la pista
+function goToClue(id){
+  var c=CLUES[id];
+  pendingClue=id;
+  var tp=new THREE.Vector3(c.wx,0,c.wz); pushOut(tp);
+  target.copy(tp);
+  ring.position.set(tp.x,0.03,tp.z); ring.visible=true;
+}
+// paso 3: abrir el popup (tras caminar + zoom)
+function openClue(id){
   var c=CLUES[id];
   document.getElementById('popTag').textContent=c.tag;
   document.getElementById('popTitle').textContent=c.title;
@@ -480,16 +496,15 @@ function examineClue(id){
     var tag=document.createElement('div'); tag.className='clueTag';
     tag.textContent='✓ '+c.title; document.getElementById('clues').appendChild(tag);
     var n=Object.keys(cluesFound).length;
-    var lbl='EVIDENCIAS '+n+'/'+cluesTotal+(n===cluesTotal?' · COMPLETO':'');
-    document.getElementById('clueCount').textContent=lbl;
+    document.getElementById('clueCount').textContent='EVIDENCIAS '+n+'/'+cluesTotal+(n===cluesTotal?' · COMPLETO':'');
   }
 }
 document.getElementById('popClose').addEventListener('click',function(){
-  document.getElementById('pop').classList.remove('on');
+  document.getElementById('pop').classList.remove('on'); zoomTarget=0;
 });
 // botón volver al menú
 document.getElementById('backBtn').addEventListener('click',function(){
-  started=false;
+  started=false; zoomTarget=0; pendingClue=null;
   document.getElementById('pop').classList.remove('on');
   document.getElementById('hud').classList.remove('on');
   document.getElementById('clues').classList.remove('on');
@@ -526,8 +541,16 @@ function animate(){
   var dir=target.clone().sub(player.position); dir.y=0; var dist=dir.length();
   if(dist>0.14 && modelReady){ dir.normalize(); player.position.addScaledVector(dir,2.1*dt); pushOut(player.position);
     player.rotation.y=Math.atan2(dir.x,dir.z)+FACE; setAction('Walk'); }
-  else { setAction('Idle'); ring.visible=false; }
+  else { setAction('Idle'); ring.visible=false;
+    // llegó al destino: si iba a una pista, hacer zoom y abrir
+    if(pendingClue!==null){ zoomTarget=1; var pc=pendingClue; pendingClue=null;
+      setTimeout(function(){ openClue(pc); },520); }
+  }
   if(mixer) mixer.update(dt);
+  // zoom suave de cámara (ortográfica: menor d = más cerca)
+  zoomCur+=(zoomTarget-zoomCur)*0.08;
+  var dd=14-zoomCur*4.5;   // de 14 (normal) a ~9.5 (zoom)
+  if(Math.abs(dd-camera.top)>0.01){ camera.left=-dd*aspect; camera.right=dd*aspect; camera.top=dd; camera.bottom=-dd; camera.updateProjectionMatrix(); }
   var arr=rain.geometry.attributes.position.array;
   for(var i=0;i<rainN;i++){ arr[i*3+1]-=rv[i]*dt; arr[i*3]-=2.4*dt;
     if(arr[i*3+1]<-1){ arr[i*3]=player.position.x+(Math.random()-0.5)*80; arr[i*3+1]=26+Math.random()*5; arr[i*3+2]=player.position.z+(Math.random()-0.5)*80; } }
