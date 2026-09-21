@@ -26,9 +26,11 @@
     transition:background .2s, transform .1s; }
   #inicio .start:hover{ background:rgba(255,178,61,.12); }
   #inicio .start:active{ transform:translateY(1px); }
-  #bg2d{ position:fixed; inset:0; z-index:0; background:#05080b center center / cover no-repeat;
+  #scene{ position:fixed; inset:0; z-index:0; overflow:hidden;
+    transform:scale(1); transform-origin:50% 50%; will-change:transform; }
+  #bg2d{ position:absolute; inset:0; z-index:0; background:#05080b center center / cover no-repeat;
     opacity:0; transition:opacity 1.1s ease; }
-  #c3d{ position:fixed; inset:0; z-index:1; }
+  #c3d{ position:absolute; inset:0; z-index:1; }
   #c3d canvas{ display:block; background:transparent; }
   #hint{ position:fixed; left:0; right:0; bottom:18px; z-index:5; text-align:center;
     color:#7c8a96; font-size:12.5px; letter-spacing:2px; pointer-events:none;
@@ -97,13 +99,15 @@
 </style>
 </head>
 <body>
-  <div id="bg2d"></div>
+  <div id="scene">
+    <div id="bg2d"></div>
+    <div id="c3d"></div>
+  </div>
   <div id="inicio">
     <h1>NORTH BEND</h1>
     <p class="desc">Un juego detectivesco. Recorre la escena, examina lo que otros pasaron por alto y reconstruye lo que de verdad ocurrió.</p>
     <button class="start" id="btnStart">INICIAR</button>
   </div>
-  <div id="c3d"></div>
   <div id="hint">HAZ CLICK EN LA CARRETERA PARA CAMINAR · EXAMINA LOS PUNTOS BRILLANTES</div>
   <div id="carga">cargando…</div>
 
@@ -499,6 +503,7 @@ function examineClue(id){
 }
 document.getElementById('popClose').addEventListener('click',function(){
   document.getElementById('pop').classList.remove('on'); zoomTarget=0;
+  document.getElementById('clueLayer').style.opacity='';
 });
 // botón volver al menú
 document.getElementById('backBtn').addEventListener('click',function(){
@@ -540,15 +545,18 @@ function animate(){
   if(dist>0.14 && modelReady){ dir.normalize(); player.position.addScaledVector(dir,2.1*dt); pushOut(player.position);
     player.rotation.y=Math.atan2(dir.x,dir.z)+FACE; setAction('Walk'); }
   else { setAction('Idle'); ring.visible=false; }
-  // llegó a una pista pendiente -> zoom y abrir (solo si venía caminando hacia ella)
+  // llegó a una pista pendiente -> zoom (fondo+personaje juntos) y abrir
   if(pendingClue!==null && dist<=0.15){
     var pc=pendingClue; pendingClue=null; zoomTarget=1;
+    var cc=CLUES[pc];
+    document.getElementById('scene').style.transformOrigin=cc.sx+'% '+cc.sy+'%';
+    document.getElementById('clueLayer').style.opacity='0';
     setTimeout(function(){ examineClue(pc); },560);
   }
-  // zoom suave (cámara ortográfica: menor d = más cerca)
+  // zoom suave: escala TODA la escena (fondo 2D + personaje 3D) como una unidad
   zoomCur+=(zoomTarget-zoomCur)*0.08;
-  var zd=14-zoomCur*4.5;
-  camera.left=-zd*aspect; camera.right=zd*aspect; camera.top=zd; camera.bottom=-zd; camera.updateProjectionMatrix();
+  var zs=1+zoomCur*0.55;   // 1 = normal, 1.55 = acercado
+  document.getElementById('scene').style.transform='scale('+zs.toFixed(3)+')';
   if(mixer) mixer.update(dt);
   var arr=rain.geometry.attributes.position.array;
   for(var i=0;i<rainN;i++){ arr[i*3+1]-=rv[i]*dt; arr[i*3]-=2.4*dt;
